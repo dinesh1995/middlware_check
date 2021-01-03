@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from datetime import datetime
 import requests
+import pdb
 import json
 import uuid
 
@@ -23,6 +24,24 @@ def users():
 	response = requests.get(users_url, headers=headers).json()
 	return response
 
+# View Doctors
+@app.route('/api/users/doctors', methods=['GET'])
+def doctors():
+	find_doctors_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
+	query_data = {'type': {'$eq': 1}}
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(find_doctors_url, headers=headers, params={'where':json.dumps(query_data)}).json()
+	return response
+
+# View Patients
+@app.route('/api/users/patients', methods=['GET'])
+def patients():
+	find_patients_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
+	query_data = {'type': {'$eq': 0}}
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(find_patients_url, headers=headers, params={'where':json.dumps(query_data)}).json()
+	return response
+
 
 # Login User - Sample payload
 # {
@@ -39,31 +58,11 @@ def users_login():
 	response = requests.get(find_user_url, headers=headers, params={'where':json.dumps(query_data)}).json()
 	if response['count'] == 1:
 		if response['data'][0]['password'] == user_password:
-			return {"success":"valid user"}, 200
+			return {"success":"Valid user"}, 200
 		else:
 			return {"error":"Password is wrong"}, 403
 	else:
 		return {"error":"Email not found"}, 403
-
-
-# View Doctors
-@app.route('/api/users/doctors', methods=['GET'])
-def docters():
-	find_doctors_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
-	query_data = {'type': {'$eq': 1}}
-	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
-	response = requests.get(find_doctors_url, headers=headers, params={'where':json.dumps(query_data)}).json()
-	return response
-
-
-# View Patients
-@app.route('/api/users/patients', methods=['GET'])
-def patients():
-	find_patients_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
-	query_data = {'type': {'$eq': 0}}
-	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
-	response = requests.get(find_patients_url, headers=headers, params={'where':json.dumps(query_data)}).json()
-	return response
 
 
 # Book Appointments - Sample payload
@@ -80,6 +79,78 @@ def book_appointment():
 	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
 	response = requests.post(appointments_url, headers=headers, json=request.json).json()
 	return response
+
+# View Appointments of a doctor
+@app.route('/api/view_appointment/doctor/<user_id>', methods=['GET'])
+def view_appointment_doctor(user_id):
+	appointments_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/appointments"
+	query_data = {'doctor_id': {'$eq': user_id}}
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(appointments_url, headers=headers, params={'where':json.dumps(query_data)}).json()
+	return response
+
+# View Appointments of a patient
+@app.route('/api/view_appointment/patient/<user_id>', methods=['GET'])
+def view_appointment_patient(user_id):
+	appointments_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/appointments"
+	query_data = {'patient_id': {'$eq': user_id}}
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(appointments_url, headers=headers, params={'where':json.dumps(query_data)}).json()
+	return response
+
+# Delete Appointments
+@app.route('/api/delete_appointment/<id>', methods=['DELETE'])
+def delete_appointment(id):
+	appointments_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/appointments/"+id
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.delete(appointments_url, headers=headers)
+	if response.status_code == 204:
+		return {"success":"Appointment deleted"}, 204
+	else:
+		return {"error":"Error in deleting appointment"}, 500
+
+
+# Add medicine - Sample payload
+# {
+# 	"name" : "BP Tablet",
+# 	"patient_id": "f7b7efe1-765a-44f5-a125-87afac0cdc4e",
+# 	"doctor_id": "27e50a8c-03eb-4cb3-a3c2-74cea7faa84a",
+#	"quantity": "1",
+# 	"intake_day_time": ["Mon-21:00","Tue-21:00","Thur-12:00","Fri-12:00"]
+# }
+@app.route('/api/add_medicine', methods=['POST'])
+def add_medicine():
+	request.json['id'] = str(uuid.uuid1())
+	medicines_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/medicines"
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.post(medicines_url, headers=headers, json=request.json).json()
+	return response
+
+# View all medicines of a patient
+@app.route('/api/medicines/patient/<user_id>', methods=['GET'])
+def view_medicines_patient(user_id):
+	medicines_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/medicines"
+	query_data = {'patient_id': {'$eq': user_id}}
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(medicines_url, headers=headers, params={'where':json.dumps(query_data)}).json()
+	return response
+
+# View medicines of a patient at specific day and time - Sample payload
+# GET - http://127.0.0.1:5000/api/medicines/patient/f7b7efe1-765a-44f5-a125-87afac0cdc4e/notify?day_time=Mon-21:00
+@app.route('/api/medicines/patient/<user_id>/notify', methods=['GET'])
+def view_medicines_patient_notify(user_id):
+	day_time = request.args['day_time']
+	medicines_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/medicines"
+	#query_data = {'patient_id': {'$eq': user_id}, 'intake_day_time': {'$contains':day_time}}
+	query_data = {'patient_id': {'$eq': user_id}}
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(medicines_url, headers=headers, params={'where':json.dumps(query_data)}).json()
+	notify = {"notify" : []}
+	if response["data"]:
+		for data in response["data"]:
+			if day_time in data['intake_day_time']:
+				notify["notify"].append({"name":data["name"],"quantity":data["quantity"],"day_time":day_time})
+	return notify, 200
 
 
 if __name__ == "__main__":
