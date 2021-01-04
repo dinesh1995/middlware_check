@@ -15,6 +15,73 @@ def get_auth_token():
 	response = requests.post(auth_url, headers=auth_headers, json=auth_data)
 	return response.json()['authToken']
 
+# Create Patient (User Singup)
+# {
+# 	"name": "Patient5",
+# 	"email": "patient5@test.com",
+# 	"password": "test1234",
+# 	"phone_number": "123456789",
+# 	"age": 40,
+# 	"gender": "Female",
+# 	"profession": "Test",
+# 	"city": "India",
+# 	"patient_details": [{
+# 			"key":"Have you ever suffered from suicidal thoughts?",
+# 			"value":"No"
+# 		},{ "key":"Are you suffering from panic attack",
+# 			"value":"Sometimes"
+# 		},{	"key":"Are you spiritual",
+# 			"value":"Yes"
+#		},{
+# 			"key":"Is your financial condition bothering you?",
+# 			"value":"Yes it does"	
+# 		}
+# 	]
+# }
+@app.route('/api/users/patient', methods=['POST'])
+def create_user():
+	request.json['id'] = str(uuid.uuid1())
+	request.json['type'] = "patient"
+	patient_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.post(patient_url, headers=headers, json=request.json).json()
+	patient_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users/" + response['id']
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(patient_url, headers=headers).json()
+	del response['data'][0]['doctor_details']
+	return response
+
+# Create Doctor (Will be added by admin)
+# {
+# 	"name": "Doctor1",
+# 	"email": "doctor1@test.com",
+# 	"password": "test1234",
+# 	"phone_number": "123456789",
+# 	"age": 40,
+# 	"gender": "Male",
+# 	"profession": "Test",
+# 	"city": "India",
+# 	"doctor_details": [{
+# 			"key":"Specialization",
+# 			"value":"Phyciatrist"
+# 		},{
+# 			"key":"Experience",
+# 			"value":"10 years"	
+# 		}
+# 	]
+# }
+@app.route('/api/users/doctor', methods=['POST'])
+def create_doctor():
+	request.json['id'] = str(uuid.uuid1())
+	request.json['type'] = "doctor"
+	doctor_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.post(doctor_url, headers=headers, json=request.json).json()
+	doctor_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users/" + response['id']
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(doctor_url, headers=headers).json()
+	del response['data'][0]['patient_details']
+	return response
 
 # View all users
 @app.route('/api/users')
@@ -22,28 +89,49 @@ def users():
 	users_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v1/keyspaces/healthapp_keyspace/tables/users/rows"
 	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
 	response = requests.get(users_url, headers=headers).json()
+	for index, data in enumerate(response['rows']):
+		if data['type'] == "patient":
+			del response['rows'][index]['doctor_details']
+		else:
+			del response['rows'][index]['patient_details']
 	return response
 
-# View Doctors
+# View single user - Can be patient or doctor
+@app.route('/api/user/<user_id>')
+def view_user(user_id):
+	users_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users/" + user_id
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(users_url, headers=headers).json()
+	if response['data'][0]['type'] == "patient":
+		del response['data'][0]['doctor_details']
+	else:
+		del response['data'][0]['patient_details']
+	return response
+
+# View All Doctors
 @app.route('/api/users/doctors', methods=['GET'])
 def doctors():
 	find_doctors_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
-	query_data = {'type': {'$eq': 1}}
+	query_data = {'type': {'$eq': "doctor"}}
 	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
 	response = requests.get(find_doctors_url, headers=headers, params={'where':json.dumps(query_data)}).json()
+	for index, data in enumerate(response['data']):
+		del response['data'][index]['patient_details']
 	return response
 
-# View Patients
+# View All Patients
 @app.route('/api/users/patients', methods=['GET'])
 def patients():
 	find_patients_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
-	query_data = {'type': {'$eq': 0}}
+	query_data = {'type': {'$eq': "patient"}}
 	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
 	response = requests.get(find_patients_url, headers=headers, params={'where':json.dumps(query_data)}).json()
+	for index, data in enumerate(response['data']):
+		del response['data'][index]['doctor_details']
 	return response
 
 
-# Login User - Sample payload
+# Login User - Both patient and doctor
 # {
 # 	"email":"test1@test.com",
 # 	"password":"test1234"
@@ -58,7 +146,15 @@ def users_login():
 	response = requests.get(find_user_url, headers=headers, params={'where':json.dumps(query_data)}).json()
 	if response['count'] == 1:
 		if response['data'][0]['password'] == user_password:
-			return {"success":"Valid user"}, 200
+			user_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users/" + response['data'][0]['id']
+			headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+			response = requests.get(user_url, headers=headers).json()
+			if response['data'][0]['type'] == "patient":
+				del response['data'][0]['doctor_details']
+			else:
+				del response['data'][0]['patient_details']
+			response['data'][0]['success'] = 'Valid user'
+			return response['data'][0], 200
 		else:
 			return {"error":"Password is wrong"}, 403
 	else:
