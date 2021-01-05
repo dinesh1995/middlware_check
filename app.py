@@ -172,6 +172,8 @@ def patients():
 # }
 @app.route('/api/users/login', methods=['POST'])
 def users_login():
+	print("request: "+str(request))
+	print("request-json: "+str(request.json))
 	user_email = request.json['email']
 	user_password = request.json['password']
 	find_user_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
