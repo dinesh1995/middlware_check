@@ -1,12 +1,13 @@
 from flask import Flask, jsonify, request
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import pdb
 import json
 import uuid
-import os
+from flask_bcrypt import Bcrypt
 
 app = Flask(__name__)
+bcrypt = Bcrypt(app)
 
 
 def get_auth_token():
@@ -40,13 +41,29 @@ def get_auth_token():
 # 	]
 # }
 @app.route('/api/users/patient', methods=['POST'])
-def create_user():
+def create_patient():
 	request.json['id'] = str(uuid.uuid1())
 	request.json['type'] = "patient"
+	request.json['password'] = bcrypt.generate_password_hash(request.json['password']).decode("utf-8")
 	patient_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
 	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
 	response = requests.post(patient_url, headers=headers, json=request.json).json()
 	patient_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users/" + response['id']
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(patient_url, headers=headers).json()
+	del response['data'][0]['doctor_details']
+	return response
+
+# Update patient - Sample payload
+# {
+# 	"name":"patient edited"
+# }
+@app.route('/api/users/patient/<user_id>', methods=['PUT'])
+def update_patient(user_id):
+	patient_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users/" + user_id
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.patch(patient_url, headers=headers, json=request.json).json()
+	patient_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users/" + user_id
 	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
 	response = requests.get(patient_url, headers=headers).json()
 	del response['data'][0]['doctor_details']
@@ -75,10 +92,26 @@ def create_user():
 def create_doctor():
 	request.json['id'] = str(uuid.uuid1())
 	request.json['type'] = "doctor"
+	request.json['password'] = bcrypt.generate_password_hash(request.json['password']).decode("utf-8")
 	doctor_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
 	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
 	response = requests.post(doctor_url, headers=headers, json=request.json).json()
 	doctor_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users/" + response['id']
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(doctor_url, headers=headers).json()
+	del response['data'][0]['patient_details']
+	return response
+
+# Update doctor - Sample payload
+# {
+# 	"name":"doctor edited"
+# }
+@app.route('/api/users/doctor/<user_id>', methods=['PUT'])
+def update_doctor(user_id):
+	doctor_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users/" + user_id
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.patch(doctor_url, headers=headers, json=request.json).json()
+	doctor_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users/" + user_id
 	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
 	response = requests.get(doctor_url, headers=headers).json()
 	del response['data'][0]['patient_details']
@@ -139,6 +172,7 @@ def patients():
 # }
 @app.route('/api/users/login', methods=['POST'])
 def users_login():
+	print("Request data: "+str(request.json))
 	user_email = request.json['email']
 	user_password = request.json['password']
 	find_user_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users"
@@ -146,7 +180,7 @@ def users_login():
 	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
 	response = requests.get(find_user_url, headers=headers, params={'where':json.dumps(query_data)}).json()
 	if response['count'] == 1:
-		if response['data'][0]['password'] == user_password:
+		if bcrypt.check_password_hash(response['data'][0]['password'],user_password):
 			user_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/users/" + response['data'][0]['id']
 			headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
 			response = requests.get(user_url, headers=headers).json()
@@ -166,8 +200,8 @@ def users_login():
 # {
 # 	"patient_id": "f7b7efe1-765a-44f5-a125-87afac0cdc4e",
 # 	"doctor_id": "27e50a8c-03eb-4cb3-a3c2-74cea7faa84a",
-# 	"start_time": 1299038700000,
-# 	"end_time": 1299038700000
+# 	"start_time": "2021-01-04T18:25:43Z",
+# 	"end_time": "2021-01-04T19:25:43Z"
 # }
 @app.route('/api/book_appointment', methods=['POST'])
 def book_appointment():
@@ -175,6 +209,12 @@ def book_appointment():
 	appointments_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/appointments"
 	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
 	response = requests.post(appointments_url, headers=headers, json=request.json).json()
+	appointments_url = "https://04f17b24-94cd-447b-82ef-1b391e99778e-us-east1.apps.astra.datastax.com/api/rest/v2/keyspaces/healthapp_keyspace/appointments/" + response['id']
+	headers = {'Content-type': 'application/json','x-cassandra-token': get_auth_token()}
+	response = requests.get(appointments_url, headers=headers).json()
+	response['data'][0]['start_time'] = (datetime.fromtimestamp(response['data'][0]['start_time']['epochSecond']) - timedelta(hours=5, minutes=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
+	response['data'][0]['end_time'] = (datetime.fromtimestamp(response['data'][0]['end_time']['epochSecond']) - timedelta(hours=5, minutes=30)).strftime('%Y-%m-%dT%H:%M:%SZ')
+	response['success'] = 'Appointment created successfully'
 	return response
 
 # View Appointments of a doctor
